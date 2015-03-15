@@ -155,6 +155,13 @@
       });
    };
 
+   IG.prototype.setAuthenticationData = function(data){
+      this._accountToken = data.accountToken;
+      this._clientToken = data.clientToken;
+      this._lsEndpoint = data.lsEndpoint;
+      this._apiKey = data.apiKey;
+   };
+
    /**
     * @desc Wrapper for console.log to reduce verbose logging.
     * @private

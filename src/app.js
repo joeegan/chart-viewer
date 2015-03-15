@@ -3,7 +3,6 @@
    function App() {}
 
    /**
-    * @type {}
     */
    App.prototype._loggedIn = false;
 
@@ -11,7 +10,6 @@
     * @returns {RSVP.Promise}
     */
    App.prototype.login = function() {
-      IG.setUrl(Credentials.apiUrl);
       console.debug('Logging in...');
       return RSVP.Promise.resolve(IG.authenticate({
          identifier: Credentials.identifier,
@@ -20,6 +18,9 @@
       })).then(function() {
          console.debug('Logged in successfully.');
          this._loggedIn = true;
+         $.cookie('accountToken', IG._accountToken);
+         $.cookie('clientToken', IG._clientToken);
+         $.cookie('lsEndpoint', IG._lsEndpoint); 
       }.bind(this));
    };
 
@@ -43,7 +44,7 @@
       }.bind(this));
    };
 
-   App.prototype.populateInstrumentDropdown = function(id){
+   App.prototype.populateInstrumentDropdown = function(id) {
       return new RSVP.Promise(function(resolve, reject) {
          IG.getWatchlist({id: id}, function(data){
             $('#epics').empty();
@@ -68,11 +69,13 @@
       }.bind(this));
    };
 
-   var drawChart = function(data) {
+   App.prototype.drawChart = function(data) {
       var data = google.visualization.arrayToDataTable(data, true);
+      // data.chxl="0:|0|50|100|150|200|250|300|350|400|450|500|1:|16/01/2009|26/01/2009|6/02/2009";
       var options = {
         colors: ['#333'],
         strokeWidth: 1,
+        // dateFormat:'HH:mm MMMM dd, yyyy',
         candlestick: {
           fallingColor: {
             fill: '#d92d27',
@@ -97,11 +100,14 @@
          prices.forEach(function(price) {
             chartData.push([price.snapshotTime, price.lowPrice.bid, price.openPrice.bid, price.closePrice.bid, price.highPrice.bid])
          });
-         drawChart(chartData);
-      });
+         app.drawChart(chartData);
+      }.bind(this), function(error) {
+        this.warn(error.responseJSON.errorCode);
+      }.bind(this));
    };
 
    App.prototype.attachEvents = function(){
+      var app = this;
       $('#watchlists').change(function(){
          return app.populateInstrumentDropdown($(this).val()).then(function(){
             app.populateChart($('#epics option:first').val(), $('#resolution').val());
@@ -115,33 +121,42 @@
       })
    };
 
+   App.prototype.warn = function(msg) {
+      $('.warn').toggleClass('hidden', false).find('p').html(i18n(msg));
+   };
+
+   App.prototype.init = function() {
+      this.populateWatchlistDropdown().then(function(id) {
+         return this.populateInstrumentDropdown(id);
+      }.bind(this)).then(function(epic){
+         this.attachEvents();
+         this.populateChart(epic, $('#resolution').val());
+      }.bind(this));
+   };
+
    window.App = App;
 
 })();
 
-google.load("visualization", "1", { packages:["corechart"] });
 numeral.language('en-gb');
+google.load("visualization", "1", { packages:["corechart"] });
+IG.setUrl(Credentials.apiUrl);
 
 $(function() {
 
    var app = new App();
 
-   window.warn = function(msg) {
-      $('.warn').toggleClass('hidden', false).find('p').html(msg);
+   if ($.cookie('accountToken')) {
+      IG.setAuthenticationData({
+        accountToken: $.cookie('accountToken'),
+        clientToken: $.cookie('clientToken'),
+        lsEndpoint: $.cookie('lsEndpoint'),
+        apiKey: Credentials.apiKey
+     });
+     app.init();
+   } else {
+    app.login().then(app.init.bind(this));
    }
 
-   app.login().then(function() {
-
-      app.populateWatchlistDropdown().then(function(id) {
-         return app.populateInstrumentDropdown(id);
-      }).then(function(epic){
-         app.populateChart(epic, $('#resolution').val());
-         app.attachEvents();
-
-      });
-
-   }).catch(function(error) {
-      console.error(error);
-   });
 });
 
